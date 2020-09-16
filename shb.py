@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from scipy import stats
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, FunctionTransformer
 from sklearn.model_selection import train_test_split
+import statsmodels.formula.api as smf
 # import statsmodels.api as sm
 
 class MakeModel:
@@ -22,6 +23,7 @@ class MakeModel:
         self.X_test = None
         self.y_train = None
         self.y_test = None
+        self.models = []
 
     def get_current_size(self):
         """
@@ -284,7 +286,10 @@ class MakeModel:
         print(f'Shape of y_test: {self.y_test.shape}')
         print('='*40)
 
-    def regression(self):
-        pass
+    def regression(self, formula):
+        model = smf.ols(formula=formula, pd.concat([self.X_train, self.y_train], axis=1)).fit()
+        self.models.append((model, model.summary()))
+        model.summary()
 
+        
     

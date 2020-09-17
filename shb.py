@@ -7,12 +7,17 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler, FunctionTransfor
 from sklearn.model_selection import train_test_split
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
-from sklearn.metrics import mean_squared_error
+import matplotlib as mpl
+from sklearn.metrics import mean_squared_error, r2_score
+from statsmodels.stats.outliers_influence import variance_inflation_factor
 import pickle
+import timeit
 # import statsmodels.api as sm
+plt.style.use('seaborn-whitegrid')
+mpl.rcParams["figure.titlesize"] = 12
 
 class MakeModel:
-    def __init__(self, data, cat_cols=None, cont_cols=None, target='price'):
+    def __init__(self, data, cat_cols=[], cont_cols=[], target='price'):
         self.cat_cols = cat_cols
         self.cont_cols = cont_cols
         self.data = data
@@ -29,11 +34,78 @@ class MakeModel:
         self.model = None
         self.target = target
         self.dropped_columns = []
+    
+    def col_identifier(self):
+        """
+        Allows users to classify columns into either categorical or continuous by examining linearity of each columns.
+        """
+        # Determining categorical and continous columns by examining histograms
+        for col in self.data.columns:
+            fig, ax = plt.subplots(figsize=(10,7))
+            try:
+                sns.scatterplot(x=col, y=self.target, data=self.data, ax=ax)
+                ax.set(title=f'Linearity of column {col}', xlabel=f'{col}', ylabel=self.target)
+                plt.show()
+                print("""
+                      Options
+                      1. Categorical column
+                      2. Continuous column
+                      3. Drop column
+                      """)
+                user_input = input('Classify the column: ')
+                if user_input=='1':
+                    self.cat_cols.append(col)
+                    message = f"'{col}' has been added to categorical columns!'"
+                    print_message(message)
+                elif user_input=='2':
+                    self.cont_cols.append(col)
+                    message = f"'{col}' has been added to continuous columns!'"
+                    print_message(message)
+                elif user_input=='3':
+                    self.drop_column(col)
+                else:
+                    message = 'Invalid option.'
+                    print_message(message)
+            except:
+                print(col)
+    def count_na(self, cols=None):
+        """
+        Counts number of nan's in the data set.
+        =====================
+        parameters
 
-    def current_model_version(self):
-        print('='*40)
-        print(f'Currently working on model #{len(self.models)+1}')
-        print('='*40)
+        cols = string or array. default=None.
+
+        =====================
+        output
+        
+        None
+        """
+
+        if cols == None:
+            print(self.data.isna().sum().sort_values(ascending=False))
+        else:
+
+            if self.check_col_name(cols):
+
+                print("Number of nulls: ", self.data[cols].isna().sum())
+
+
+    def counts(self, col):
+        """
+        Prints the count numbers of values in a given pd.Series
+        =====================
+        parameters
+
+        cols = string. Name of a column in the dataset.
+
+        =====================
+        output
+        
+        None
+        
+        """
+        print(self.data[col].value_counts(dropna=False, normalize=True))
 
     def get_current_size(self):
         """
@@ -69,14 +141,14 @@ class MakeModel:
 
         zscore_mask = self.zscore_outlier(data)
         data_zscore = data[~zscore_mask]
-        sns.distplot(data_zscore, bins='auto', ax=axes[1], label=f'Zscore Outlier (n={len(data_zscore)}, {len(data_zscore)/len(data)*100}%)')
-        axes[1].set(title=f'Zscore Outlier (n={len(data_zscore)}, {len(data_zscore)/len(data)*100}%)')
+        sns.distplot(data_zscore, bins='auto', ax=axes[1], label=f'Zscore Outlier (n={len(data_zscore)}, {round((len(data_zscore)/len(data)*100),2)}%)')
+        axes[1].set(title=f'Zscore Outlier (n={len(data_zscore)}, {round((len(data_zscore)/len(data)*100),2)}%)')
 
         iqr_mask = self.IQR_outlier(data)
         data_iqr = data[~iqr_mask]
-        sns.distplot(data_iqr, bins='auto', ax=axes[2], label=f'IQR Outlier (n={len(data_iqr)}, {len(data_iqr)/len(data)*100}%)')
-        axes[2].set(title=f'IQR Outlier (n={len(data_iqr)}, {len(data_iqr)/len(data)*100}%)')
-
+        sns.distplot(data_iqr, bins='auto', ax=axes[2], label=f'IQR Outlier (n={len(data_iqr)}, {round((len(data_iqr)/len(data)*100),2)}%)')
+        axes[2].set(title=f'IQR Outlier (n={len(data_iqr)}, {round((len(data_iqr)/len(data)*100),2)}%)')
+        plt.suptitle(f'{col} distribution graphs', size=20)
         plt.show()
         option = input("Choose an option (1) none (2) zscore method (3) IQR method (4) Drop column: ")
         if option == '1':
@@ -85,6 +157,8 @@ class MakeModel:
             self.update_data(self.data[~zscore_mask])
         elif option == '3':
             self.update_data(self.data[~iqr_mask])
+        elif option == '4':
+            self.drop_column(col)
         else:
             print('nothing has changed.')
 
@@ -147,7 +221,6 @@ class MakeModel:
         numpy array with booleans values that need to be filtered out.
         """
         iqr = stats.iqr(data)
-        median = data.median()
         q1 = np.percentile(data, 25) # Q1
         q3 = np.percentile(data, 75) # Q3
         mask = (data > q3 + 1.5*iqr) | (data < q1 - 1.5*iqr)
@@ -164,6 +237,7 @@ class MakeModel:
         option : {'median', 'mean', 0, str}
             - 'median' will replace missing values by its median
             - 'mean' will replace missing values by its mean
+            - 'mode' will replace missing values by its mode
             - 0 will replace missing values by 0
             - str will replace missing values by given string
         ===================
@@ -171,18 +245,44 @@ class MakeModel:
 
         pd.Series
         """
-        data = self.data[col]
-        if option == 'median':
-            data.fillna(data.median())
-        elif option == 'mean':
-            data.fillna(data.mean())
-        elif option == 0:
-            data.fillna(0)
-        else:
-            data.fillna(option)
-        
-        return data
 
+        if self.check_col_name(col):
+            if option == 'median':
+                self.data[col].fillna(self.data[col].median(), inplace=True)
+            elif option == 'mean':
+                self.data[col].fillna(self.data[col].mean(), inplace=True)
+            elif option == 'mode':
+                self.data[col].fillna(stats.mode(self.data[col])[0][0], inplace=True)
+            elif option == 0:
+                self.data[col].fillna(0, inplace=True)
+            else:
+                self.data[col].fillna(option)
+            print(self.count_na(col))
+
+    def check_col_name(self, cols):
+        """
+        Checkes whether a given column or columns is(are) part of the dataframe.
+        ==================
+        input parameters:
+
+        col : string. column name that needs to be immuted
+
+        ===================
+        output:
+
+        boolean.
+            - True if cols are included in the dataframe
+            - False if cols are NOT included in the dataframe
+        """
+        if type(cols) == str:
+            cols = [cols]
+        if set(cols).issubset(set(self.data.columns)):
+            return True
+        else:
+            message = f'{cols} not found in the data. Try again.'
+            print_message(message)
+            return False
+    
     def scaler(self, col):
         """
         Allows the user to choose which scaler to be used on selected 'col' of the data.
@@ -304,25 +404,34 @@ class MakeModel:
         else:
             data = self.data.copy()
         
-        # prints and creates correlation heatmap/matrix
-        cor = self.corr_map(option=option)
-
-        # allows users to pick which columns to get rid of according to their correlation values
-        while True:
-            print(cor.unstack().sort_values(ascending=False).head(10))
-            user_input = input('Write column name you would like to get rid of (Enter "x" to exit): ')
-            if user_input in data.columns:
-                self.delete_column(cols=user_input)
-            elif user_input == 'x':
-                print_message(f"Exiting!\nThere are {self.data.shape[1]} columns remaining in the data")
-                break
-            else: 
-                message = f"'{user_input}' is not found. Please try again."
-                print_message(message)
-
-    def delete_column(self, cols):
+        options = """
+                    Options:
+                    \t1. Correlation Matrix
+                    \t2. Variance Inflation Factor (VIF)
+                  """
+        print(options)
+        method = input('Choose which method you would like to determine multicolinearity variables: ')
+        if method =='1':
+            # allows users to pick which columns to get rid of according to their correlation values
+            while True:
+                # prints and creates correlation heatmap/matrix
+                cor = self.corr_map(option=option)
+                print(cor.unstack().sort_values(ascending=False).head(10))
+                print('\n')
+                user_input = input('Write column name you would like to get rid of (Enter "x" to exit): ')
+                if user_input in data.columns:
+                    self.drop_column(cols=user_input)
+                elif user_input == 'x':
+                    print_message(f"Exiting!\nThere are {self.data.shape[1]} columns remaining in the data")
+                    break
+                else: 
+                    message = f"'{user_input}' is not found. Please try again."
+                    print_message(message)
+        elif method == '2':
+            pass
+    def drop_column(self, cols):
         """
-        delete a column
+        drops a column
         ==================
         parameters
 
@@ -370,11 +479,10 @@ class MakeModel:
 
         X_train, X_test, y_train, y_test
         """
-        data = ['X_train', 'X_test', 'y_train', 'y_test']
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.X, self.y, train_size=train_size, shuffle=shuffle, random_state=random_state)
         # messages = [f'Shape of {x}: {exec("self."+f"x"+".shape")}' for x in data]
         
-        messages = [f'Shape of X_train: {self.X_train.shape}', f'Shape of y_train: {self.y_train.shape}', f'Shape of y_train: {self.y_train.shape}', f'Shape of y_test: {self.y_test.shape}']
+        messages = [f'Shape of X_train: {self.X_train.shape}', f'Shape of X_test: {self.X_test.shape}', f'Shape of y_train: {self.y_train.shape}', f'Shape of y_test: {self.y_test.shape}']
         print_message(messages)
 
         # print(f'Shape of y_train: {self.y_train.shape}')
@@ -382,32 +490,16 @@ class MakeModel:
         # print(f'Shape of y_test: {self.y_test.shape}')
         # # print('='*40)
 
-    def get_formula(self, cat=True, cont=True):
+    def get_formula(self):
         """
         creates formula that can be used in OLS regression.
-        ====================
-        parameters
-
-        cat : boolean. Categorical columns will not be included in the formula if False. Default = True
-
-        cont : boolean. Continuous columns will not be included in the formula if False.Default = True
         =====================
         output
 
         formula : string.
         """
-        # initializes empty lists for features in cont and cat columns
-        features_cont = []
-        features_cat = []
 
-        # Fills in cat/cont lists according to given paremeters
-        if cat:
-            features_cat = self.cat_cols
-        if cont:
-            features_cont = self.cont_cols
-        features = features_cat + features_cont
-
-        features = " + ".join(features)
+        features = " + ".join(self.X_train.columns)
         
         self.target = 'price' # temporary
         formula = self.target + ' ~ ' + features
@@ -430,21 +522,31 @@ class MakeModel:
         self.resid_train = self.y_hat_train - self.y_train 
         self.resid_test = self.y_hat_test - self.y_test
         
-        train_mse = mean_squared_error(self.y_train)
+        self.train_mse = mean_squared_error(self.y_train, self.y_hat_train)
+        self.test_mse = mean_squared_error(self.y_test, self.y_hat_test)
 
+        self.train_r2 = r2_score(self.y_train, self.y_hat_train)
+        self.test_r2 = r2_score(self.y_test, self.y_hat_test)
 
-        ## QQ plot
-
-        ## Homo...
+        ## QQ plots
         fig, axs = plt.subplots(ncols=2, figsize=(18,12))
-        sns.scatterplot(y_train, self.resid_train, ax=axs[0], label='Training Residuals')
+        sm.graphics.qqplot(self.resid_train, line='45', fit=True, ax=axs[0])
+        axs[0].set(title='QQ plot for training data set')
+        sm.graphics.qqplot(self.resid_test, line='45', fit=True, ax=axs[1])
+        axs[1].set(title='QQ plot for test data set')
+        
+        # Homoscedasticity
+        fig, axs = plt.subplots(ncols=2, figsize=(18,12))
+        sns.scatterplot(self.y_train, self.resid_train, ax=axs[0], label='Training Residuals')
         axs[0].set(title='Training Residual Graph', xlabel='y_train', ylabel='Residuals')
         axs[0].axhline(0, label='zero')
 
-        sns.scatterplot(y_test, self.resid_test, ax=axs[1], label='Testing Residuals')
+        sns.scatterplot(self.y_test, self.resid_test, ax=axs[1], label='Testing Residuals')
         axs[1].set(title='Test Residual Graph', xlabel='y_test', ylabel='Residuals')
         axs[1].axhline(0, label='zero')
 
+        message=[f'Train MSE = {self.train_mse}\tTrain R2 = {self.train_r2}', f'Test MSE = {self.test_mse}\tTest R2 = {self.test_r2}']
+        print_message(message)
     def qqplot(self):
         pass
 
@@ -473,7 +575,7 @@ class MakeModel:
     #                 break
     #             else:
     #                 print('invalid option. Please try again.')
-
+    
 
     
 def print_message(messages, marker="=", number=40):
@@ -496,10 +598,10 @@ def print_message(messages, marker="=", number=40):
             print(message)
     print(marker*number)
 
-def save_data(filename='model_file', data):
-    with open(filename, 'wb') as f:
+def save_data(data, name='model_file'):
+    with open(name, 'wb') as f:
         pickle.dump(data, f)
 
-def load_data(filename='model_file'):
-    with open(filaname, 'rb') as f:
+def load_data(name='model_file'):
+    with open(name, 'rb') as f:
         return pickle.load(f)

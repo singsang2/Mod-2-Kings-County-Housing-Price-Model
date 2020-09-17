@@ -34,8 +34,9 @@ class MakeModel:
         self.model = None
         self.target = target
         self.dropped_columns = []
-    
-    def col_identifier(self):
+        self.splitted = False
+
+    def col_classifier(self):
         """
         Allows users to classify columns into either categorical or continuous by examining linearity of each columns.
         """
@@ -133,7 +134,7 @@ class MakeModel:
         new pd.Series
         """
 
-        fig, axes = plt.subplots(ncols=3, figsize=(18,12))
+        fig, axes = plt.subplots(ncols=3, figsize=(18,6))
         
         data =self.data[col].copy()
         sns.distplot(data, bins='auto', ax=axes[0], label=f'Original (n={len(data)})')
@@ -148,6 +149,7 @@ class MakeModel:
         data_iqr = data[~iqr_mask]
         sns.distplot(data_iqr, bins='auto', ax=axes[2], label=f'IQR Outlier (n={len(data_iqr)}, {round((len(data_iqr)/len(data)*100),2)}%)')
         axes[2].set(title=f'IQR Outlier (n={len(data_iqr)}, {round((len(data_iqr)/len(data)*100),2)}%)')
+
         plt.suptitle(f'{col} distribution graphs', size=20)
         plt.show()
         option = input("Choose an option (1) none (2) zscore method (3) IQR method (4) Drop column: ")
@@ -323,7 +325,7 @@ class MakeModel:
         except:
             print('Error occured')
         
-        plt.suptitle(f'Different scalers for {col} column (n={len(data)})')
+        plt.suptitle(f'Different scalers for {col} column (n={len(data)})', fontsize=20)
         plt.show()
         option = input("Choose an option (1) none (2) standard (3) min_max (4) logarithmic: ")
         if option == '1':
@@ -462,7 +464,8 @@ class MakeModel:
         #         if self.data.columns
         else:
             print_message("Invalid input!")
-
+    def ohe(self):
+        pass
     def split(self, train_size=0.75, shuffle=True, random_state=42):
         """
         splits the data into test and train data set using sklearn.model_selection
@@ -479,16 +482,17 @@ class MakeModel:
 
         X_train, X_test, y_train, y_test
         """
+        # Sets X and y
+        self.X = self.data[self.cont_cols].drop(columns=self.target) ############################# NEED TO ADD cat cols!
+        self.y = self.data[self.target]
+
+        # Splits data into train and test set
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.X, self.y, train_size=train_size, shuffle=shuffle, random_state=random_state)
-        # messages = [f'Shape of {x}: {exec("self."+f"x"+".shape")}' for x in data]
-        
+
+        # prints out resulting shapes
         messages = [f'Shape of X_train: {self.X_train.shape}', f'Shape of X_test: {self.X_test.shape}', f'Shape of y_train: {self.y_train.shape}', f'Shape of y_test: {self.y_test.shape}']
         print_message(messages)
-
-        # print(f'Shape of y_train: {self.y_train.shape}')
-        # print(f'Shape of X_test: {self.X_test.shape}')
-        # print(f'Shape of y_test: {self.y_test.shape}')
-        # # print('='*40)
+        self.splitted = True
 
     def get_formula(self):
         """
@@ -507,15 +511,42 @@ class MakeModel:
         return formula
 
     def regression(self, formula):
-        # initialize self.model
-        data = pd.concat([self.X_train, self.y_train], axis=1)
-        self.model = smf.ols(formula=formula, data=data).fit()
-        self.note = None
+        """
+        Creates a regression model using OLS.
+        =====================
+        parameters
 
-        return self.model
+        formula: string. MakeModel.get_formula() can be used to get a formula.
+
+        =====================
+        output
+        
+        model
+        """
+        if self.splitted:
+            # Gets a formula that can be used in OLS
+            formula = self.get_formula()
+            print_message(["Formula:", formula])
+
+            # Train
+
+            # initialize self.model
+            data = pd.concat([self.X_train, self.y_train], axis=1)
+            self.model = smf.ols(formula=formula, data=data).fit()
+
+            return self.model
+        else:
+            message = "Data has NOT been splitted yet. Please do it first!"
+            print_message(message)
 
 
     def validate_model(self):
+        """
+        Validates the model via
+        1. QQ plots - check for normality of residuals
+        2. Residual graphs - check for homoscedesticity
+        3. Compare MSE and r2_score for both train and test sets for overfitting/underfitting
+        """
         self.y_hat_train = self.model.predict(self.X_train) 
         self.y_hat_test = self.model.predict(self.X_test)
 
@@ -547,8 +578,7 @@ class MakeModel:
 
         message=[f'Train MSE = {self.train_mse}\tTrain R2 = {self.train_r2}', f'Test MSE = {self.test_mse}\tTest R2 = {self.test_r2}']
         print_message(message)
-    def qqplot(self):
-        pass
+
 
     # def load_model(self):
     #     """

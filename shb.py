@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from sklearn.metrics import mean_squared_error
-
+import pickle
 # import statsmodels.api as sm
 
 class MakeModel:
@@ -446,7 +446,7 @@ class MakeModel:
         axs[1].axhline(0, label='zero')
 
     def qqplot(self):
-
+        pass
 
     # def load_model(self):
     #     """
@@ -495,3 +495,11 @@ def print_message(messages, marker="=", number=40):
         for message in messages:
             print(message)
     print(marker*number)
+
+def save_data(filename='model_file', data):
+    with open(filename, 'wb') as f:
+        pickle.dump(data, f)
+
+def load_data(filename='model_file'):
+    with open(filaname, 'rb') as f:
+        return pickle.load(f)

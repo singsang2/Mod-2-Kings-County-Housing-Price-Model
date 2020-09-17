@@ -35,11 +35,35 @@ class MakeModel:
         self.target = target
         self.dropped_columns = []
         self.splitted = False
+        self.ohe_columns = []
+
+    def __author__(self):
+        message = "Sung Hoon Bae"
+        print_message(message)
+    
+    def __str__(self):
+        messages = [
+                    f"Shape:\t{self.data.shape}",
+                    f"Perecent Retained:\t{self.percent_data}",
+                    f"Dropped columns:\t{self.dropped_columns}",
+                    f"Categorical columns:\t{self.cat_cols}",
+                    f"Contiuous columns:\t{self.cont_cols}"
+                    f'Train MSE = {self.train_mse}\tTrain R2 = {self.train_r2}', 
+                    f'Test MSE = {self.test_mse}\tTest R2 = {self.test_r2}'
+                   ]
+        print_message(messages)
+
+    def __repr__(self):
+        self.__str__()
 
     def col_classifier(self):
         """
         Allows users to classify columns into either categorical or continuous by examining linearity of each columns.
         """
+        # Initialize lists
+        self.cat_cols = []
+        self.cont_cols = []
+
         # Determining categorical and continous columns by examining histograms
         for col in self.data.columns:
             fig, ax = plt.subplots(figsize=(10,7))
@@ -396,7 +420,7 @@ class MakeModel:
         =============
         output:
 
-        ???
+        None
         """
         # copies data according to option
         if option == "cat":
@@ -404,7 +428,7 @@ class MakeModel:
         elif option == "cont":
             data = self.data[self.cont_cols].copy()
         else:
-            data = self.data.copy()
+            data = self.data[self.cat_cols+self.cont_cols]
         
         options = """
                     Options:
@@ -431,7 +455,7 @@ class MakeModel:
                     print_message(message)
         elif method == '2':
             pass
-    def drop_column(self, cols):
+    def drop_column(self, cols, ohe=False, verbose=True):
         """
         drops a column
         ==================
@@ -439,6 +463,9 @@ class MakeModel:
 
         col = string or array. name of the column that needs to be deleted
 
+        ohe = boolean. Default = False. True only if dropping the column was resulted from ohe.
+
+        verbose = boolean. Default = True. Prints out information about deleted columns.
         ==================
         output
 
@@ -447,9 +474,13 @@ class MakeModel:
         # check if col exists in the data column.
         if type(cols) == str:
             if cols in self.data.columns:
-                self.data.drop(columns=[cols],inplace=True)
-                self.dropped_columns.append(cols)
-                print_message([f"'{cols}' has been DELETED!", f"There are now {self.data.shape[1]} columns in the data."])
+                # self.data.drop(columns=[cols],inplace=True)
+                if ohe:
+                    self.dropped_columns.append(cols)
+                else:
+                    self.ohe_columns.append(cols)
+                if verbose:    
+                    print_message([f"'{cols}' has been DELETED!", f"There are now {self.data.shape[1]} columns in the data."])
 
                 # also updates cat/cont columns
                 if cols in self.cat_cols:
@@ -464,8 +495,64 @@ class MakeModel:
         #         if self.data.columns
         else:
             print_message("Invalid input!")
-    def ohe(self):
-        pass
+    def ohe(self, cols=[], inplace=True):
+        """
+        One-Hot-Encoder using pandas built-in method.
+        ======================
+        parameters
+
+        cols: array. list of columns names. Default = []
+            - if left empty then goes through each cat_cols for the user to determine to use ohe to each column.
+        inplace: boolean. Replaces the original if true.
+        ======================
+        output
+
+        new pd.DataFrame with ohe columns
+        """
+        # copies categorical column names
+        cols = self.cat_cols.copy()
+
+        if len(cols)==0:
+            for col in cols:
+                self.get_col_info(col)
+                user_input = input(f"Would you like to ohe column '{col}' (1 - yes, 2 - no): ")
+                while True:
+                    if user_input == '1':
+                        df_dummies = pd.get_dummies(data=self.data[col], columns=[col], drop_first=True, prefix=col)
+                        self.drop_column(col, ohe=True, verbose=False)
+                        self.data = pd.concat([self.data, df_dummies], axis=1)
+                        print_message([f"Column {col} has been one-hot-encoded", f"{df_dummies.shape[1]} columns have been added.",f"Total number of columns: {self.data.shape[1]}"])
+                        self.cat_cols += list(df_dummies.columns)
+                        break
+                    elif user_input == '2':
+                        self.drop_column(col)
+                        break
+                    else:
+                        message = 'Invalid input! Try again!'
+                        print_message(message)
+        else:
+            return pd.get_dummies(data=self.data, columns=cols, drop_first=True, prefix=cols)
+    
+    def get_col_info(self, col):
+        """
+        gets and print out column information
+        =======================
+        parameter
+
+        col = string. column name.
+        =======================
+        output
+
+        None
+        """
+        if self.check_col_name(col):
+            messages = [
+                f"Column Name: {col}",
+                f"Number of unique values: {self.data[col].nunique()}",
+                self.data[col].value_counts(normalize=True)
+                        ]
+            print_message(messages)
+
     def split(self, train_size=0.75, shuffle=True, random_state=42):
         """
         splits the data into test and train data set using sklearn.model_selection
@@ -505,7 +592,6 @@ class MakeModel:
 
         features = " + ".join(self.X_train.columns)
         
-        self.target = 'price' # temporary
         formula = self.target + ' ~ ' + features
 
         return formula

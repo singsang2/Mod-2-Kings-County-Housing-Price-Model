@@ -20,7 +20,7 @@ class MakeModel:
     def __init__(self, data, cat_cols=[], cont_cols=[], target='price'):
         self.cat_cols = cat_cols
         self.cont_cols = cont_cols
-        self.data = data
+        self.data = data.copy()
         self.org_size = len(data)
         self.current_size = self.get_current_size()
         self.percent_data = 100
@@ -35,26 +35,35 @@ class MakeModel:
         self.target = target
         self.dropped_columns = []
         self.splitted = False
-        self.ohe_columns = []
+        self.ohe_dropped_columns = []
+        self.ohe_cols = []
+        self.train_mse = None
+        self.test_mse = None
+        self.train_r2 = None
+        self.test_r2 = None
 
     def __author__(self):
         message = "Sung Hoon Bae"
         print_message(message)
+        # return message
     
     def __str__(self):
+        print("Model Information")
         messages = [
                     f"Shape:\t{self.data.shape}",
                     f"Perecent Retained:\t{self.percent_data}",
                     f"Dropped columns:\t{self.dropped_columns}",
                     f"Categorical columns:\t{self.cat_cols}",
-                    f"Contiuous columns:\t{self.cont_cols}"
+                    f"Contiuous columns:\t{self.cont_cols}",
+                    f"Number of OHE columns:\t{len(self.ohe_cols)}",
                     f'Train MSE = {self.train_mse}\tTrain R2 = {self.train_r2}', 
                     f'Test MSE = {self.test_mse}\tTest R2 = {self.test_r2}'
                    ]
         print_message(messages)
+        return "Model Information Completed"
 
     def __repr__(self):
-        self.__str__()
+        return self.__str__()
 
     def col_classifier(self):
         """
@@ -68,7 +77,7 @@ class MakeModel:
         for col in self.data.columns:
             fig, ax = plt.subplots(figsize=(10,7))
             try:
-                sns.scatterplot(x=col, y=self.target, data=self.data, ax=ax)
+                sns.regplot(x=col, y=self.target, data=self.data, ax=ax)
                 ax.set(title=f'Linearity of column {col}', xlabel=f'{col}', ylabel=self.target)
                 plt.show()
                 print("""
@@ -87,7 +96,7 @@ class MakeModel:
                     message = f"'{col}' has been added to continuous columns!'"
                     print_message(message)
                 elif user_input=='3':
-                    self.drop_column(col)
+                    self.drop_cols(col)
                 else:
                     message = 'Invalid option.'
                     print_message(message)
@@ -184,7 +193,7 @@ class MakeModel:
         elif option == '3':
             self.update_data(self.data[~iqr_mask])
         elif option == '4':
-            self.drop_column(col)
+            self.drop_cols(col)
         else:
             print('nothing has changed.')
 
@@ -308,7 +317,28 @@ class MakeModel:
             message = f'{cols} not found in the data. Try again.'
             print_message(message)
             return False
-    
+
+    def set_cols(self, cat=[], cont=[]):
+        """
+        Manually define categorical and continuous columns bypassing self.col_classifier
+        =====================
+        parameters
+
+        cat = list. List of categorical column names. Default=[]. 
+
+        cont = list. List of continuous column names. Default=[]. 
+        """
+        if self.check_col_name(cat + cont):
+            self.cat_cols = cat
+            self.cont_cols = cont
+
+            list_col = self.cat_cols + self.cont_cols
+            drop_col = set(self.data.columns) - set(list_col)
+            print(list(drop_col))
+            self.drop_cols(list(drop_col))
+        self.__str__()
+
+
     def scaler(self, col):
         """
         Allows the user to choose which scaler to be used on selected 'col' of the data.
@@ -324,24 +354,24 @@ class MakeModel:
         fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(18,12))
         
         axes = axes.ravel() # flattens matrix
-        
-        # prints the histogram of the original data
-        data =self.data[[col]].copy()
-        sns.distplot(data, bins='auto', ax=axes[0], label=f'Original (n={len(data)})')
-        axes[0].set(title=f'Original (normaltest={stats.normaltest(data)[1]})')
-
-        # for transformer in transfomers:
-
-        s_scaler = StandardScaler()
-        s_data = s_scaler.fit_transform(data)
-        sns.distplot(s_data, bins='auto', ax=axes[1])
-        axes[1].set(title=f'Standard Scalers (normaltest={stats.normaltest(s_data)[1]})')
-
-        mm_scaler = MinMaxScaler()
-        mm_data = mm_scaler.fit_transform(data)
-        sns.distplot(mm_data, bins='auto', ax=axes[2])
-        axes[2].set(title=f'MinMax Scaler (normaltest={stats.normaltest(mm_data)[1]})')
         try:
+            # prints the histogram of the original data
+            data =self.data[[col]].copy()
+            sns.distplot(data, bins='auto', ax=axes[0], label=f'Original (n={len(data)})')
+            axes[0].set(title=f'Original (normaltest={stats.normaltest(data)[1]})')
+
+            # for transformer in transfomers:
+
+            s_scaler = StandardScaler()
+            s_data = s_scaler.fit_transform(data)
+            sns.distplot(s_data, bins='auto', ax=axes[1])
+            axes[1].set(title=f'Standard Scalers (normaltest={stats.normaltest(s_data)[1]})')
+
+            mm_scaler = MinMaxScaler()
+            mm_data = mm_scaler.fit_transform(data)
+            sns.distplot(mm_data, bins='auto', ax=axes[2])
+            axes[2].set(title=f'MinMax Scaler (normaltest={stats.normaltest(mm_data)[1]})')
+
             log_scaler = FunctionTransformer(np.log1p, validate=True)
             log_data = log_scaler.fit_transform(data)
             sns.distplot(log_data, bins='auto', ax=axes[3])
@@ -366,16 +396,14 @@ class MakeModel:
         else:
             print('Nothing has changed.')
 
-    def corr_map(self, option=None, annot=True, cmap='YlGnBu'):
+    def corr_map(self, data, annot=True, cmap='YlGnBu'):
         """
         Creates and prints a heatmap of correlation values between given data.
         ===================
         input parameters:
         
-        option : {'cat', 'cont', }
-            - 'cat' : outputs the correlation heatmap of categorical variables
-            - 'cont' : outputs the correlation heatmap of continuous variables
-            - None : outputs the correlation heatmap of all variables
+        data : pd.DataFrame
+
         annot : True by default. Can decide whether you would like to see the values on the heatmap graph.
 
         cmap : 'YlGnBu' by default. seaborn colormap themes
@@ -384,86 +412,134 @@ class MakeModel:
 
         correlation matrix
         """
-        if option == "cat":
-            data = self.data[self.cat_cols].copy()
-            title = 'Categorical Columns Correlation Heatmap'
-        elif option == "cont":
-            data = self.data[self.cont_cols].copy()
-            title = 'Continuous Columns Correlation Heatmap'
-        else:
-            data = self.data.copy()
-            title = 'All Columns Correlation Heatmap'
+        # if option == "cat":
+        #     data = self.data[self.cat_cols].copy()
+        #     title = 'Categorical Columns Correlation Heatmap'
+        # elif option == "cont":
+        #     data = self.data[self.cont_cols].copy()
+        #     title = 'Continuous Columns Correlation Heatmap'
+        # else:
+        #     data = self.data[self.cont_cols + self.cat_cols].copy()
+        #     title = 'All Columns Correlation Heatmap'
        
         # find correlation matrix between different variables given in data
         corr = data.corr()
+
         # creates triangular mask over the map
         mask = np.zeros_like(corr, dtype=np.bool)
         mask[np.triu_indices_from(mask)] = True
 
         fig, ax = plt.subplots(figsize=(18,12))
         sns.heatmap(corr, annot=annot, cmap=cmap, mask=mask, ax=ax)
-        ax.set(title=title)
+        ax.set(title='Correlation Heatmap')
         plt.show()
         return np.abs(corr * (~mask))
 
-    def multicolinearity(self, option=None):
+    def multicolinearity(self):
         """
         Allows the user to examine and get rid of possible multicolinearity variables using (1) correlation map and (2) 
-        ===================
-        input parameters:
-        
-        option : {'cat', 'cont', }
-            - 'cat' : outputs the correlation heatmap of categorical variables
-            - 'cont' : outputs the correlation heatmap of continuous variables
-            - None : outputs the correlation heatmap of all variables
-        
-        =============
-        output:
-
-        None
         """
-        # copies data according to option
-        if option == "cat":
-            data = self.data[self.cat_cols].copy()
-        elif option == "cont":
-            data = self.data[self.cont_cols].copy()
-        else:
-            data = self.data[self.cat_cols+self.cont_cols]
-        
         options = """
                     Options:
                     \t1. Correlation Matrix
                     \t2. Variance Inflation Factor (VIF)
                   """
-        print(options)
+        print_message(options)
         method = input('Choose which method you would like to determine multicolinearity variables: ')
-        if method =='1':
-            # allows users to pick which columns to get rid of according to their correlation values
+        self.choose_col_to_drop(method=method)
+    
+    def VIF(self):
+        """
+        Calculates and prints VIF
+        """
+        X = self.data[self.cont_cols + self.ohe_cols].drop(columns=self.target).copy()
+        X = sm.add_constant(X)
+
+        self.vif =pd.DataFrame()
+        self.vif["variables"] = X.columns
+
+        self.vif["VIF"] = [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
+        print(self.vif.sort_values(by=['VIF'], ascending=False).head(10))
+    
+    def choose_col_to_drop(self, method):
+        """
+        Allows users to drop columns with a help of correlation matrix or VIF.
+        ==================
+        parameters 
+
+        data : pd.DataFrame. Dataframe that you would like to check.
+
+        method : string.
+            - 1: correlation matrix / heatmap
+            - 2: VIF
+        ==================
+        """
+        # allows users to pick which columns to get rid of according to their correlation values
+        
+        # prints and creates correlation heatmap/matrix or VIF
+        if method == '1':
             while True:
-                # prints and creates correlation heatmap/matrix
-                cor = self.corr_map(option=option)
+                cor = self.corr_map(self.data[self.cat_cols + self.cont_cols])
                 print(cor.unstack().sort_values(ascending=False).head(10))
                 print('\n')
+                
                 user_input = input('Write column name you would like to get rid of (Enter "x" to exit): ')
-                if user_input in data.columns:
-                    self.drop_column(cols=user_input)
+                if user_input in self.data.columns:
+                    self.drop_cols(cols=user_input)
                 elif user_input == 'x':
                     print_message(f"Exiting!\nThere are {self.data.shape[1]} columns remaining in the data")
                     break
                 else: 
                     message = f"'{user_input}' is not found. Please try again."
                     print_message(message)
+        
         elif method == '2':
-            pass
-    def drop_column(self, cols, ohe=False, verbose=True):
+            while True:
+                self.VIF()
+                print('\n')
+                user_input = input('Write cut-off value (Usually 7, x-exit): ')
+                if user_input == 'x':
+                    print_message(f"Exiting!\nThere are {self.data.shape[1]} columns remaining in the data")
+                    break
+                else:
+                    drop = list(self.vif[self.vif['VIF']>float(user_input)].variables)
+                    # print(drop)
+                    drop.remove('const')
+                    # print(drop)
+                    self.drop_cols(drop)
+
+    def p_value_cut_off(self):
+        p_value = pd.DataFrame(self.model.pvalues).reset_index()
+        p_value.columns = ['variables', 'p_value']
+        print(p_value.sort_values(by=['p_value'], ascending=False).head(10))
+        while True:
+                user_input = input('Write cut-off p-value (Usually 0.05, Enter "x" to exit): ')
+
+                if user_input == 'x':
+                    print_message(f"Exiting!\nThere are {self.data.shape[1]} columns remaining in the data")
+                    break
+                else:
+                    drop = list(p_value[p_value['p_value'] > float(user_input)].variables)
+                    # print(drop)
+                    if 'const' in drop:
+                        drop.remove('const')
+                    # print(drop)
+                    self.drop_cols(drop)
+                    break
+        
+
+    
+    def drop_cols(self, cols, ohe=False, verbose=True):
         """
-        drops a column
+        drops column(s)
         ==================
         parameters
 
-        col = string or array. name of the column that needs to be deleted
+        col = string or list containing the name(s) of the columns that needs to be deleted
 
         ohe = boolean. Default = False. True only if dropping the column was resulted from ohe.
+
+        ohe_clear = boolean. Default = False. True if and only if used by self.drop_ohe_cols.
 
         verbose = boolean. Default = True. Prints out information about deleted columns.
         ==================
@@ -473,12 +549,12 @@ class MakeModel:
         """
         # check if col exists in the data column.
         if type(cols) == str:
-            if cols in self.data.columns:
+            if self.check_col_name(cols):
                 # self.data.drop(columns=[cols],inplace=True)
-                if ohe:
+                if not ohe:
                     self.dropped_columns.append(cols)
                 else:
-                    self.ohe_columns.append(cols)
+                    self.ohe_dropped_columns.append(cols)
                 if verbose:    
                     print_message([f"'{cols}' has been DELETED!", f"There are now {self.data.shape[1]} columns in the data."])
 
@@ -487,14 +563,36 @@ class MakeModel:
                     self.cat_cols.remove(cols)
                 elif cols in self.cont_cols:
                     self.cont_cols.remove(cols)
-            else:
-                message = f"'{cols}' is not found. Please try again."
-                print_message(message)
-        # elif type(cols) == list:
-        #     for col in cols:
-        #         if self.data.columns
+
+        elif type(cols) == list:
+            if self.check_col_name(cols):
+                self.data.drop(columns=cols, inplace=True)
+                # also updates cat/cont columns
+                for col in cols:
+                    if col in self.ohe_cols:
+                        self.ohe_cols.remove(col)
+                    else: 
+                        self.dropped_columns.append(col)
+                        if col in self.cat_cols:
+                            self.cat_cols.remove(col)
+                            print('imhere')
+                        elif col in self.cont_cols:
+                            print('cont')
+                            self.cont_cols.remove(col)
+                    
+                if verbose:
+                    print_message([f"{len(cols)} columns have been DELETED!", f"There are now {self.data.shape[1]} columns in the data."])
         else:
             print_message("Invalid input!")
+
+    def fix_col_names(self):
+        """
+        Fixes column names so that they can be used in OLS formula.
+        """
+        self.cat_cols = [name.replace('.','') for name in self.cat_cols]
+        self.ohe_cols = [name.replace('.','') for name in self.ohe_cols]
+        self.data.columns = [name.replace('.','') for name in self.data.columns]
+
     def ohe(self, cols=[], inplace=True):
         """
         One-Hot-Encoder using pandas built-in method.
@@ -509,30 +607,49 @@ class MakeModel:
 
         new pd.DataFrame with ohe columns
         """
-        # copies categorical column names
-        cols = self.cat_cols.copy()
+        # Refreshes
+        self.drop_ohe_cols(verbose=False)
 
         if len(cols)==0:
+            message = "*** OHE TIME ***"
+            print_message(message)
+
+            # copies categorical column names
+            cols = self.cat_cols.copy()
             for col in cols:
                 self.get_col_info(col)
-                user_input = input(f"Would you like to ohe column '{col}' (1 - yes, 2 - no): ")
                 while True:
+                    user_input = input(f"Would you like to ohe column '{col}' (1-yes, 2-no, x-exit): ")
                     if user_input == '1':
                         df_dummies = pd.get_dummies(data=self.data[col], columns=[col], drop_first=True, prefix=col)
-                        self.drop_column(col, ohe=True, verbose=False)
+                        # self.drop_cols(col, ohe=True, verbose=False)
                         self.data = pd.concat([self.data, df_dummies], axis=1)
                         print_message([f"Column {col} has been one-hot-encoded", f"{df_dummies.shape[1]} columns have been added.",f"Total number of columns: {self.data.shape[1]}"])
-                        self.cat_cols += list(df_dummies.columns)
+                        self.ohe_cols += list(df_dummies.columns)
                         break
                     elif user_input == '2':
-                        self.drop_column(col)
+                        self.drop_cols(col)
+                        break
+                    elif user_input == 'x':
                         break
                     else:
                         message = 'Invalid input! Try again!'
                         print_message(message)
         else:
-            return pd.get_dummies(data=self.data, columns=cols, drop_first=True, prefix=cols)
+            if self.check_col_name(cols):
+                return pd.get_dummies(data=self.data, columns=cols, drop_first=True, prefix=cols)
+    def test(self):
+        print('testing')
     
+    def drop_ohe_cols(self, verbose=True):
+        # Removes all ohe columns
+        self.drop_cols(self.ohe_cols, ohe=True, verbose=verbose)
+        # return dropped ohe columns back to categorical columns
+        self.cat_cols += self.ohe_dropped_columns
+        self.ohe_cols = []
+        # Set ohe dropped columns to an empty list
+        self.ohe_dropped_columns = []
+
     def get_col_info(self, col):
         """
         gets and print out column information
@@ -553,11 +670,16 @@ class MakeModel:
                         ]
             print_message(messages)
 
-    def split(self, train_size=0.75, shuffle=True, random_state=42):
+    def split(self, option=None, train_size=0.75, shuffle=True, random_state=42):
         """
         splits the data into test and train data set using sklearn.model_selection
         ===================
         parameters
+
+        option = string.
+            - None = both categorical and continuous columns are used
+            - 'cat' = only categorical columns are used
+            - 'cont' = only continuous columns are used
 
         train_size : float. Determines how much percent of original data you would want as train set. (Default = 0.75)
 
@@ -570,7 +692,12 @@ class MakeModel:
         X_train, X_test, y_train, y_test
         """
         # Sets X and y
-        self.X = self.data[self.cont_cols].drop(columns=self.target) ############################# NEED TO ADD cat cols!
+        if option == 'cat':
+            self.X = self.data[self.ohe_cols]#.drop(columns=[self.target]) 
+        elif option == 'cont':
+            self.X = self.data[self.cont_cols].drop(columns=[self.target]) 
+        else:
+            self.X = self.data[self.cont_cols + self.ohe_cols].drop(columns=[self.target]) 
         self.y = self.data[self.target]
 
         # Splits data into train and test set
@@ -596,18 +723,9 @@ class MakeModel:
 
         return formula
 
-    def regression(self, formula):
+    def regression(self):
         """
         Creates a regression model using OLS.
-        =====================
-        parameters
-
-        formula: string. MakeModel.get_formula() can be used to get a formula.
-
-        =====================
-        output
-        
-        model
         """
         if self.splitted:
             # Gets a formula that can be used in OLS
@@ -691,9 +809,9 @@ class MakeModel:
     #                 break
     #             else:
     #                 print('invalid option. Please try again.')
-    
 
-    
+
+        
 def print_message(messages, marker="=", number=40):
     """
     prints out messages
@@ -714,10 +832,10 @@ def print_message(messages, marker="=", number=40):
             print(message)
     print(marker*number)
 
-def save_data(data, name='model_file'):
+def save_data(data, name):
     with open(name, 'wb') as f:
         pickle.dump(data, f)
 
-def load_data(name='model_file'):
+def load_data(name):
     with open(name, 'rb') as f:
         return pickle.load(f)

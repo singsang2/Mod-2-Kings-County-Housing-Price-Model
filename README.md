@@ -86,21 +86,21 @@ The following API was used to obtain additional data:
 
 1. <code>MakeModel.col_classifier()</code> - allows the user to classify each column in the dataframe either (1) continous, (2) categrorical or (3) drop the column.
 <br>
-2. `MakeModel.outliers()` - allows the user to filter out outliers if any using either (1) z-score method or (2) IQR method.
+2. <code>MakeModel.outliers()</code> - allows the user to filter out outliers if any using either (1) z-score method or (2) IQR method.
 <br>
-3. `MakeModel.scaler()` - allows the user to scale data using (1) standardscale, (2) min-max scale, or (3) logarithmic scale
+3. <code>MakeModel.scaler()</code> - allows the user to scale data using (1) standardscale, (2) min-max scale, or (3) logarithmic scale
 <br>
-4. `MakeModel.multicoliearity()` - allows the user to drop predictors that might be multicolinear using either (1) correlation matrix or (2) variance inflaction factor (VIF).
+4. <code>MakeModel.multicoliearity()</code> - allows the user to drop predictors that might be multicolinear using either (1) correlation matrix or (2) variance inflaction factor (VIF).
 <br>
-5. `MakeModel.ohe()` - allows the user to do one-hot-encode categorical predictors of user's choice
+5. <code>MakeModel.ohe()</code> - allows the user to do one-hot-encode categorical predictors of user's choice
 <br>
-6. `MakeModel.split()` - splits the data into train and test sets
+6. <code>MakeModel.split()</code> - splits the data into train and test sets
 <br>
-7. `MakeModel.regression()` - using statsmodels library, creates a regression model.
+7. <code>MakeModel.regression()</code> - using statsmodels library, creates a regression model.
 <br>
-8. `MakeModel.model.summary()` - prints out the summary of the model
+8. <code>MakeModel.model.summary()</code> - prints out the summary of the model
 <br>
-9. `MakeModel.validate_model()` - prints out QQ plots, residual graphs, r2_score, and MSE of both train and test data for validation.
+9. <code>MakeModel.validate_model()</code> - prints out QQ plots, residual graphs, r2_score, and MSE of both train and test data for validation.
 <hr>
 
 >The process mentioned above was repeated multiple times until the desired model was created.
@@ -112,7 +112,7 @@ The following API was used to obtain additional data:
 >The $r^2$ value turned out to be 0.725 which is not an ideal value but good 'enough' for an interpretable model.
 
 
-<img src="img/finalQQ.png">
+<img src="img/FinalQQ.png">
 
 >Even though there are slight non-normality at either ends, the residuals seem normal.
 <hr>

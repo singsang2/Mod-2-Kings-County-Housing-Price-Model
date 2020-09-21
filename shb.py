@@ -14,7 +14,7 @@ import pickle
 import timeit
 # import statsmodels.api as sm
 plt.style.use('seaborn-whitegrid')
-mpl.rcParams["figure.titlesize"] = 12
+mpl.rcParams["figure.titlesize"] = 8
 
 class MakeModel:
     def __init__(self, data, cat_cols=[], cont_cols=[], target='price'):
@@ -329,6 +329,7 @@ class MakeModel:
         cont = list. List of continuous column names. Default=[]. 
         """
         if self.check_col_name(cat + cont):
+            print('hello')
             self.cat_cols = cat
             self.cont_cols = cont
 
@@ -379,7 +380,7 @@ class MakeModel:
         except:
             print('Error occured')
         
-        plt.suptitle(f'Different scalers for {col} column (n={len(data)})', fontsize=20)
+        plt.suptitle(f'Different scalers for {col} column (n={len(data)})', fontsize=25)
         plt.show()
         option = input("Choose an option (1) none (2) standard (3) min_max (4) logarithmic: ")
         if option == '1':
@@ -811,8 +812,7 @@ class MakeModel:
     #             else:
     #                 print('invalid option. Please try again.')
 
-def get_distance(data1, data2):
-    pass
+
         
 def print_message(messages, marker="=", number=40):
     """
@@ -841,3 +841,28 @@ def save_data(data, name):
 def load_data(name):
     with open(name, 'rb') as f:
         return pickle.load(f)
+
+def get_distance(data1, data2):
+    import math
+    pi = np.pi
+    R = 6371 # Average Earth radius in km
+    for i in range(0, len(data2)):
+        att = data2.iloc[i]
+        
+        # converts to radians
+        lat1 = data1['lat']*pi/180 
+        lat2 = att['lat']*pi/180
+        long1 = data1['long']*pi/180
+        long2 = att['long']*pi/180
+        
+        # finds delta angles
+        del_lat = lat1 - lat2
+        del_long = long1 - long2
+        
+        # Source: https://www.movable-type.co.uk/
+        a = np.sin(del_lat/2)**2 + np.cos(lat1)*np.cos(lat2)*np.sin(del_long/2)**2
+        c = 2*np.arctan(np.sqrt(a)/np.sqrt(1-a))
+        d= R*c # distance in km
+        
+        data1[att['name']] = d
+    return data1  

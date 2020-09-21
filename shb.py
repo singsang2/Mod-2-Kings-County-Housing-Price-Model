@@ -351,7 +351,7 @@ class MakeModel:
 
         scaled pd.Series version.
         """ 
-        fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(18,12))
+        fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14,9))
         
         axes = axes.ravel() # flattens matrix
         try:
@@ -628,7 +628,7 @@ class MakeModel:
                         self.ohe_cols += list(df_dummies.columns)
                         break
                     elif user_input == '2':
-                        self.drop_cols(col)
+                        self.drop_cols(col, ohe=True)
                         break
                     elif user_input == 'x':
                         break
@@ -638,6 +638,7 @@ class MakeModel:
         else:
             if self.check_col_name(cols):
                 return pd.get_dummies(data=self.data, columns=cols, drop_first=True, prefix=cols)
+        self.fix_col_names()
     def test(self):
         print('testing')
     
@@ -810,7 +811,8 @@ class MakeModel:
     #             else:
     #                 print('invalid option. Please try again.')
 
-
+def get_distance(data1, data2):
+    pass
         
 def print_message(messages, marker="=", number=40):
     """
